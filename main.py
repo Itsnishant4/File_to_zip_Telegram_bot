@@ -31,13 +31,19 @@ def run_script(script_name):
 
 if __name__ == "__main__":
     PORT = 8443
+
     # Bind to the port
     server_socket = bind_port(PORT)
 
     # Run the secondary script (fz.py)
     script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fz.py")
     run_script(script_path)
-
     # Cleanup when done
     server_socket.close()
     print(f"Port {PORT} is now released.")
+
+
+  
+
+
+
