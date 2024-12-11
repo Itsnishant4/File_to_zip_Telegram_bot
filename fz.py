@@ -109,7 +109,7 @@ async def clear__all(update: Update, context: CallbackContext):
 
 # Cool progress bar with emojis
 def generate_progress_bar(percentage):
-    completed = int(percentage // 1)  # 5% per block of progress
+    completed = int(percentage // 5)  # 5% per block of progress
     remaining = 20 - completed
     progress_bar = "🟩" * completed + "⬛" * remaining
     return f"{progress_bar} {percentage:.2f}%"
