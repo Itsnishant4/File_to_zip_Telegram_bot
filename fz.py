@@ -185,6 +185,7 @@ async def download_file(file, file_path, update, user_temp_dir):
 async def handle_download(file, file_path, update, progress_msg, user_temp_dir):
     total_size = file.file_size
     downloaded = 0
+    global stop_requested
 
     with open(file_path, "wb") as f:
         file_data = await file.get_file()
@@ -301,7 +302,8 @@ async def help(update: Update, context: CallbackContext):
 
 # Command: /url
 async def download_from_url(update: Update, context: CallbackContext):
-    global downloading
+    global downloading, stop_requested
+
     if not context.args:
         await update.message.reply_text("Please provide a URL to download, e.g., /url <URL>.")
         return
