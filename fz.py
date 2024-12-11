@@ -185,18 +185,14 @@ async def download_file(file, file_path, update, user_temp_dir):
 async def handle_download(file, file_path, update, progress_msg, user_temp_dir):
     total_size = file.file_size
     downloaded = 0
-    global stop_requested
+    global stop_requested, downloading
+
 
     with open(file_path, "wb") as f:
         file_data = await file.get_file()
         async with aiohttp.ClientSession() as session:
             async with session.get(file_data.file_path) as response:
-                while downloaded < total_size:
-                    if stop_requested:  # Check if stop was requested
-                        await update.message.reply_text("Download has been stopped.")
-                        stop_requested = False  # Reset the stop signal
-                        return  # Exit the loop and function
-
+                while downloaded < total_size and downloading:
                     chunk = await response.content.read(CHUNK_SIZE)
                     if not chunk:
                         break
@@ -330,11 +326,7 @@ async def download_from_url(update: Update, context: CallbackContext):
                 downloaded_size = 0
                 downloading = True
                 with open(file_path, "wb") as f:
-                    while True:
-                        if stop_requested:  # Check if stop was requested
-                            await update.message.reply_text("Download has been stopped.")
-                            stop_requested = False  # Reset the stop signal
-                            return  # Exit the loop and function
+                    while downloading :
                         chunk = await response.content.read(5 * 1024 * 1024)  # 1 MB chunks
                         if not chunk:
                             break
