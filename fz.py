@@ -14,7 +14,7 @@ import threading
 # Bot token
 TOKEN = "7919904291:AAGku102DsYoZ1dpZ9Szy3vBfYg4_OzRhO4"
 random_number = random.randint(1, 1000000)
-PORT = int(os.environ.get("PORT", 8080))
+
 
 
 # Create SSL context
@@ -26,6 +26,16 @@ MAX_FILE_SIZE = 52428800  # 50MB
 # Global variable to track ongoing download process
 downloading = False
 downloading_lock = threading.Lock()
+stop_requested = False
+
+async def stop__download(update: Update, context: CallbackContext):
+    global downloading, stop_requested
+
+    if downloading:
+        stop_requested = True  # Signal to stop downloads
+        await update.message.reply_text("Stopping the current download...")
+    else:
+        await update.message.reply_text("No active download to stop.")
 
 # Command: /start
 async def start(update: Update, context: CallbackContext):
@@ -181,6 +191,11 @@ async def handle_download(file, file_path, update, progress_msg, user_temp_dir):
         async with aiohttp.ClientSession() as session:
             async with session.get(file_data.file_path) as response:
                 while downloaded < total_size:
+                    if stop_requested:  # Check if stop was requested
+                        await update.message.reply_text("Download has been stopped.")
+                        stop_requested = False  # Reset the stop signal
+                        return  # Exit the loop and function
+
                     chunk = await response.content.read(CHUNK_SIZE)
                     if not chunk:
                         break
@@ -314,6 +329,10 @@ async def download_from_url(update: Update, context: CallbackContext):
                 downloading = True
                 with open(file_path, "wb") as f:
                     while True:
+                        if stop_requested:  # Check if stop was requested
+                            await update.message.reply_text("Download has been stopped.")
+                            stop_requested = False  # Reset the stop signal
+                            return  # Exit the loop and function
                         chunk = await response.content.read(5 * 1024 * 1024)  # 1 MB chunks
                         if not chunk:
                             break
@@ -343,7 +362,7 @@ def main():
     app.add_handler(CommandHandler("joke", joke))
     app.add_handler(CommandHandler("help", help))
     app.add_handler(CommandHandler("url", download_from_url))
-    app.add_handler(CommandHandler("stop", stop_download))
+    app.add_handler(CommandHandler("stop", stop__download))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
     app.add_handler(MessageHandler(filters.PHOTO, handle_file))
     app.add_handler(MessageHandler(filters.VIDEO, handle_file))
@@ -351,8 +370,6 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_buttons))
 
     print("Bot is running. Press Ctrl+C to stop.")
-    web_app = web.Application()
-    web.run_app(web_app, host="0.0.0.0", port=PORT)
     app.run_polling()
 
 
