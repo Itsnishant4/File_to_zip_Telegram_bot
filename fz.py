@@ -8,11 +8,14 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from telegram.ext import CallbackQueryHandler
 import random
 import asyncio
+from aiohttp import web
 import threading
 
 # Bot token
 TOKEN = "7919904291:AAGku102DsYoZ1dpZ9Szy3vBfYg4_OzRhO4"
 random_number = random.randint(1, 1000000)
+PORT = int(os.environ.get("PORT", 8080))
+
 
 # Create SSL context
 ssl_context = ssl.create_default_context(cafile=certifi.where())
@@ -73,6 +76,8 @@ async def stop_download(update: Update, context: CallbackContext):
     else:
         await update.callback_query.answer("No download in progress.")
 
+
+
 # Command: /clearall
 async def clear__all(update: Update, context: CallbackContext):
     global downloading
@@ -94,7 +99,7 @@ async def clear__all(update: Update, context: CallbackContext):
 
 # Cool progress bar with emojis
 def generate_progress_bar(percentage):
-    completed = int(percentage // 5)  # 5% per block of progress
+    completed = int(percentage // 1)  # 5% per block of progress
     remaining = 20 - completed
     progress_bar = "🟩" * completed + "⬛" * remaining
     return f"{progress_bar} {percentage:.2f}%"
@@ -188,7 +193,7 @@ async def handle_download(file, file_path, update, progress_msg, user_temp_dir):
 
                     # Update progress message
                     try:
-                        await progress_msg.edit_text(f"Downloading... {progress_bar}")
+                        await progress_msg.edit_text(f"Downloading... {progress_bar} /stop Downloding")
                     except Exception as e:
                         await progress_msg.edit_text(f"Error while updating progress: {e}")
                         progress_msg = None  # Set progress_msg to None to avoid further attempts
@@ -281,6 +286,7 @@ async def help(update: Update, context: CallbackContext):
 
 # Command: /url
 async def download_from_url(update: Update, context: CallbackContext):
+    global downloading
     if not context.args:
         await update.message.reply_text("Please provide a URL to download, e.g., /url <URL>.")
         return
@@ -305,9 +311,10 @@ async def download_from_url(update: Update, context: CallbackContext):
                     raise Exception(f"Failed to download file: HTTP {response.status}")
                 total_size = int(response.headers.get("Content-Length", 0))
                 downloaded_size = 0
+                downloading = True
                 with open(file_path, "wb") as f:
                     while True:
-                        chunk = await response.content.read(1024 * 1024)  # 1 MB chunks
+                        chunk = await response.content.read(5 * 1024 * 1024)  # 1 MB chunks
                         if not chunk:
                             break
                         f.write(chunk)
@@ -318,12 +325,13 @@ async def download_from_url(update: Update, context: CallbackContext):
                         progress_bar = generate_progress_bar(progress)
 
                         try:
-                            await msg.edit_text(f"Downloading... {progress_bar}")
+                            await msg.edit_text(f"Downloading... {progress_bar} /stop Downloding")
                         except Exception as e:
                             await msg.edit_text(f"Error while updating progress: {e}")
         await msg.edit_text(f"File `{file_name}` has been downloaded! Use /zip to compress all files Or Send Me More Files.")
     except Exception as e:
         await msg.edit_text(f"Error while downloading the file from URL: {e}")
+        downloading = False
 
 # Main function
 def main():
@@ -335,6 +343,7 @@ def main():
     app.add_handler(CommandHandler("joke", joke))
     app.add_handler(CommandHandler("help", help))
     app.add_handler(CommandHandler("url", download_from_url))
+    app.add_handler(CommandHandler("stop", stop_download))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
     app.add_handler(MessageHandler(filters.PHOTO, handle_file))
     app.add_handler(MessageHandler(filters.VIDEO, handle_file))
@@ -342,9 +351,11 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_buttons))
 
     print("Bot is running. Press Ctrl+C to stop.")
+    web_app = web.Application()
+    web.run_app(web_app, host="0.0.0.0", port=PORT)
     app.run_polling()
+
 
 # Entry point
 if __name__ == "__main__":
     main()
-    
