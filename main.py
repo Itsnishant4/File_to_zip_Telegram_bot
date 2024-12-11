@@ -2,6 +2,7 @@ import socket
 import subprocess
 import os
 import sys
+import argparse
 
 def bind_port(port):
     """
@@ -23,21 +24,37 @@ def run_script(script_name):
     """
     try:
         print(f"Starting script {script_name}...")
-        subprocess.run([sys.executable, script_name])
+        subprocess.run([sys.executable, script_name], check=True)
     except FileNotFoundError as e:
         print(f"Error: {e}. Ensure the script path is correct.")
+    except subprocess.CalledProcessError as e:
+        print(f"Script {script_name} exited with an error: {e}")
     except Exception as e:
         print(f"An error occurred while running {script_name}: {e}")
 
 if __name__ == "__main__":
-    PORT = 8443
-    # Bind to the port
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Bind a port and run a script.")
+    parser.add_argument("--port", type=int, default=8443, help="Port to bind to")
+    parser.add_argument("--script", type=str, default="fz.py", help="Script to run")
+    args = parser.parse_args()
+
+    # Bind to the specified port
+    PORT = args.port
     server_socket = bind_port(PORT)
 
-    # Run the secondary script (fz.py)
-    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fz.py")
+    # Get the full path of the script to run
+    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), args.script)
+
+    # Check if the script exists
+    if not os.path.isfile(script_path):
+        print(f"Error: The script {args.script} was not found at {script_path}.")
+        server_socket.close()
+        exit(1)
+
+    # Run the secondary script
     run_script(script_path)
 
-    # Cleanup when done
+    # Cleanup
     server_socket.close()
     print(f"Port {PORT} is now released.")
