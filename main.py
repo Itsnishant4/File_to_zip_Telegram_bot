@@ -35,7 +35,7 @@ if __name__ == "__main__":
     server_socket = bind_port(PORT)
 
     # Run the secondary script (fz.py)
-    script_path = "/Users/nishant/Downloads/fz.py"  # Full path to your script
+    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fz.py")
     run_script(script_path)
 
     # Cleanup when done
