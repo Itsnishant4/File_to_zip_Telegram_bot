@@ -63,6 +63,7 @@ async def clear_all(update: Update, context: CallbackContext):
         await query.edit_message_text("No files found to delete!")
 
 async def clear__all(update: Update, context: CallbackContext):
+    user_id = update.message.from_user.id
     user_temp_dir = get_user_temp_dir(user_id)
     if os.path.exists(user_temp_dir):
         for file_name in os.listdir(user_temp_dir):
