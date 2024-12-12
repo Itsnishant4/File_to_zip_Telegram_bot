@@ -348,7 +348,7 @@ async def download_from_url(update: Update, context: CallbackContext):
 
 # Main function
 def main():
-    app = Application.builder().token(TOKEN).read_timeout(120000).write_timeout(120000).build()
+    app = Application.builder().token(TOKEN).read_timeout(1200000000000000000).write_timeout(1200000000000000000).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("clearall", clear__all))
