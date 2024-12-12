@@ -15,6 +15,7 @@ import asyncio
 from aiohttp import web
 from collections import defaultdict
 import tempfile
+from telegram.error import RetryAfter
 
 
 
@@ -140,20 +141,28 @@ async def download_file(file, file_path, update, progress_msg, user_state):
     total_size = file.file_size
     downloaded = 0
     last_progress = 0
+    chunk_size = 1024 * 1024  # 1 MB chunks (adjustable)
 
     with open(file_path, "wb") as f:
         file_data = await file.get_file()
         async with aiohttp.ClientSession() as session:
             async with session.get(file_data.file_path) as response:
-                while downloaded < total_size and not user_state["stop_requested"]:
-                    chunk = await response.content.read(CHUNK_SIZE)
+                while downloaded < total_size:
+                    if user_state.get("stop_requested", False):
+                        os.remove(file_path)
+                        await update.message.reply_text("Download stopped and file deleted.")
+                        return  # Exit the function
+
+                    chunk = await response.content.read(chunk_size)
                     if not chunk:
-                        break
+                        break  # No more data
+
                     f.write(chunk)
                     downloaded += len(chunk)
 
+                    # Update progress bar every 5% change
                     progress = (downloaded / total_size) * 100
-                    if progress - last_progress >= 5:  # Update every 5% progress
+                    if int(progress) - int(last_progress) >= 5:
                         last_progress = progress
                         progress_bar = generate_progress_bar(progress)
                         try:
@@ -162,12 +171,10 @@ async def download_file(file, file_path, update, progress_msg, user_state):
                             await asyncio.sleep(e.retry_after)
                         except Exception as e:
                             print(f"Error updating progress: {e}")
-                    if user_state["stop_requested"]:
-                        os.remove(file_path)
-                        await update.message.reply_text("Download stopped and file deleted.")
-                    else:
-                        await update.message.reply_text(f"File `{os.path.basename(file_path)}` has been downloaded! Send more files or use /zip to zip them.")
-                        await progress_msg.delete()
+
+    # Completion message
+    await update.message.reply_text(f"File `{os.path.basename(file_path)}` has been downloaded!")
+    await progress_msg.delete()
 
 # Create a ZIP file
 async def zip_files(update: Update, context: CallbackContext):
