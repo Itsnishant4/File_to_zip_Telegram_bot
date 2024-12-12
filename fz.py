@@ -230,7 +230,7 @@ async def download_from_url(update: Update, context: CallbackContext):
     if not context.args:
         await update.message.reply_text("Please provide a URL to download, e.g., /url <URL>.")
         return
-    
+    downloaded = 0
     url = context.args[0]
     user_id = update.message.from_user.id
     user_dir = f"temp_files_{user_id}"
