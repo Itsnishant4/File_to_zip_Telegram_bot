@@ -261,7 +261,8 @@ async def download_from_url(update: Update, context: CallbackContext):
                         
                         # Calculate download progress
                         progress = (downloaded / total_size) * 100
-                        if int(progress) - int(last_progress) >= 1:                            last_progress = progress
+                        if int(progress) - int(last_progress) >= 1:                            
+                            last_progress = progress
                             progress_bar = generate_progress_bar(progress)
                             try:
                                 await progress_msg.edit_text(f"Downloading... {progress_bar}")
