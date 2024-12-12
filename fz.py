@@ -282,6 +282,7 @@ def main():
     app.add_handler(CommandHandler("clearall", clear__all))
     app.add_handler(CommandHandler("zip", zip_files))
     app.add_handler(CommandHandler("help", help))
+    app.add_handler(CommandHandler("url", download_from_url))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
     app.add_handler(MessageHandler(filters.PHOTO, handle_file))
     app.add_handler(MessageHandler(filters.VIDEO, handle_file))
