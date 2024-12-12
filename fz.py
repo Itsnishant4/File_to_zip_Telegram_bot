@@ -162,7 +162,7 @@ async def download_file(file, file_path, update, progress_msg, user_state):
 
                     # Update progress bar every 5% change
                     progress = (downloaded / total_size) * 100
-                    if int(progress) - int(last_progress) >= 5:
+                    if int(progress) - int(last_progress) >= 30:
                         last_progress = progress
                         progress_bar = generate_progress_bar(progress)
                         try:
