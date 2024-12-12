@@ -58,8 +58,11 @@ async def clear_all(update: Update, context: CallbackContext):
         os.rmdir(user_temp_dir)  # Remove the directory
         user_states[user_id]["temp_dir"] = None
         await query.edit_message_text("All files have been cleared.")
+        await update.message.reply_text("All files have been cleared.")
     else:
         await query.edit_message_text("No files found to delete!")
+        await update.message.reply_text("No files found to delete!")
+
 
 # CallbackQuery handler
 async def handle_buttons(update: Update, context: CallbackContext):
