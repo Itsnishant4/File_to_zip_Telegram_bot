@@ -225,6 +225,55 @@ async def help(update: Update, context: CallbackContext):
         "/help - Display this help message"
     )
 
+
+async def download_from_url(update: Update, context: CallbackContext):
+    if not context.args:
+        await update.message.reply_text("Please provide a URL to download, e.g., /url <URL>.")
+        return
+    
+    url = context.args[0]
+    user_id = update.message.from_user.id
+    user_dir = f"temp_files_{user_id}"
+
+    if not os.path.exists(user_dir):
+        os.makedirs(user_dir)
+
+    # Extract filename from URL
+    file_name = url.split("/")[-1] or "downloaded_file"
+    file_path = os.path.join(user_dir, file_name)
+
+    msg = await update.message.reply_text("Starting download...")
+
+    try:
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    raise Exception(f"Failed to download file: HTTP {response.status}")
+                total_size = int(response.headers.get("Content-Length", 0))
+                downloaded_size = 0
+                with open(file_path, "wb") as f:
+                    while True:
+                        chunk = await response.content.read(1024 * 1024)  # 1 MB chunks
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded_size += len(chunk)
+                        
+                        # Calculate download progress
+                        progress = (downloaded / total_size) * 100
+                        if int(progress) - int(last_progress) >= 3:
+                            last_progress = progress
+                            progress_bar = generate_progress_bar(progress)
+                            try:
+                                await progress_msg.edit_text(f"Downloading... {progress_bar}")
+                            except RetryAfter as e:
+                                await asyncio.sleep(e.retry_after)
+                            except Exception as e:
+                                print(f"Error updating progress: {e}")
+
+        await msg.edit_text(f"File `{file_name}` has been downloaded! Use /zip to compress all files Or Send Me More Files.")
+    except Exception as e:
+        await msg.edit_text(f"Error while downloading the file from URL: {e}")
 # Main function
 def main():
     app = Application.builder().token(TOKEN).build()
