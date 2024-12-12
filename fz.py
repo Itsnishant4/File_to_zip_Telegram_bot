@@ -1,3 +1,7 @@
+
+
+# Bot token
+
 import os
 import zipfile
 import ssl
@@ -9,33 +13,24 @@ from telegram.ext import CallbackQueryHandler
 import random
 import asyncio
 from aiohttp import web
-import threading
+from collections import defaultdict
+import tempfile
 
-# Bot token
 TOKEN = "7919904291:AAGku102DsYoZ1dpZ9Szy3vBfYg4_OzRhO4"
-random_number = random.randint(1, 1000000)
-
-
-
-# Create SSL context
+# SSL context for secure requests
 ssl_context = ssl.create_default_context(cafile=certifi.where())
 
 # Maximum file size allowed (50MB)
 MAX_FILE_SIZE = 52428800  # 50MB
 
-# Global variable to track ongoing download process
-downloading = False
-downloading_lock = threading.Lock()
-stop_requested = False
+# User-specific states
+user_states = defaultdict(lambda: {"downloading": False, "stop_requested": False, "temp_dir": None})
 
-async def stop__download(update: Update, context: CallbackContext):
-    global downloading, stop_requested
-
-    if downloading:
-        stop_requested = True  # Signal to stop downloads
-        await update.message.reply_text("Stopping the current download...")
-    else:
-        await update.message.reply_text("No active download to stop.")
+# Generate a unique temporary directory for each user
+def get_user_temp_dir(user_id):
+    if not user_states[user_id]["temp_dir"]:
+        user_states[user_id]["temp_dir"] = tempfile.mkdtemp(prefix=f"temp_files_{user_id}_")
+    return user_states[user_id]["temp_dir"]
 
 # Command: /start
 async def start(update: Update, context: CallbackContext):
@@ -52,14 +47,16 @@ async def start(update: Update, context: CallbackContext):
 
 # Command: clear all files
 async def clear_all(update: Update, context: CallbackContext):
-    query = update.callback_query  # Get the callback query
-    user_id = query.from_user.id  # Get the user ID from the query
-    user_temp_dir = f"temp_files_{user_id}"
+    query = update.callback_query
+    user_id = query.from_user.id
+    user_temp_dir = get_user_temp_dir(user_id)
 
-    if os.path.exists(user_temp_dir) and os.listdir(user_temp_dir):  # Check if files exist
+    if os.path.exists(user_temp_dir):
         for file_name in os.listdir(user_temp_dir):
             file_path = os.path.join(user_temp_dir, file_name)
             os.remove(file_path)
+        os.rmdir(user_temp_dir)  # Remove the directory
+        user_states[user_id]["temp_dir"] = None
         await query.edit_message_text("All files have been cleared.")
     else:
         await query.edit_message_text("No files found to delete!")
@@ -68,222 +65,125 @@ async def clear_all(update: Update, context: CallbackContext):
 async def handle_buttons(update: Update, context: CallbackContext):
     query = update.callback_query
     action = query.data
+    user_id = query.from_user.id
 
     if action == "clear_all":
         await clear_all(update, context)
     elif action == "stop_download":
-        await stop_download(update, context)  # You need to define this function as well
+        user_states[user_id]["stop_requested"] = True
+        await query.answer("Stopping the current download...")
 
-    # Answer the callback query to remove the "loading" animation
     await query.answer()
 
-# Stop the download process
-async def stop_download(update: Update, context: CallbackContext):
-    global downloading
-    if downloading:
-        downloading = False
-        await update.callback_query.answer("Download stopped!")
-    else:
-        await update.callback_query.answer("No download in progress.")
-
-
-
-# Command: /clearall
-async def clear__all(update: Update, context: CallbackContext):
-    global downloading
-
-    user_id = update.message.from_user.id
-    user_temp_dir = f"temp_files_{user_id}"
-
-    if downloading:
-        downloading = False
-        await update.message.reply_text("Download has been stopped. Proceeding to clear files.")
-
-    if os.path.exists(user_temp_dir):
-        for file_name in os.listdir(user_temp_dir):
-            file_path = os.path.join(user_temp_dir, file_name)
-            os.remove(file_path)
-        await update.message.reply_text("All files have been deleted successfully. Feel free to send more!")
-    else:
-        await update.message.reply_text("No files found to delete!")
-
-# Cool progress bar with emojis
-def generate_progress_bar(percentage):
-    completed = int(percentage // 5)  # 5% per block of progress
-    remaining = 20 - completed
-    progress_bar = "🟩" * completed + "⬛" * remaining
-    return f"{progress_bar} {percentage:.2f}%"
-
-# Handle files sent by the user
+# Handle file uploads
 CHUNK_SIZE = 5 * 1024 * 1024  # 5MB per chunk
 
 async def handle_file(update: Update, context: CallbackContext):
-    global downloading
-
     user_id = update.message.from_user.id
-    user_temp_dir = f"temp_files_{user_id}"
+    user_state = user_states[user_id]
 
-    if not os.path.exists(user_temp_dir):
-        os.makedirs(user_temp_dir)
+    if user_state["downloading"]:
+        await update.message.reply_text("A download is already in progress. Please wait or stop it using /clearall.")
+        return
 
+    user_temp_dir = get_user_temp_dir(user_id)
     file = None
     file_path = ""
-
-    # Generate a random file name for each file
     random_file_name = f"{random.randint(1, 1000000)}"
 
-    # Check if the message contains a document, photo, video, or audio
     if update.message.document:
         file = update.message.document
         file_path = os.path.join(user_temp_dir, f"{random_file_name}_{file.file_name}")
     elif update.message.photo:
-        file = update.message.photo[-1]  # Get the largest photo
+        file = update.message.photo[-1]
         file_path = os.path.join(user_temp_dir, f"{random_file_name}_photo.jpg")
-        await update.message.reply_photo(photo=file.file_id)  # Preview the image
     elif update.message.video:
         file = update.message.video
         file_path = os.path.join(user_temp_dir, f"{random_file_name}_video.mp4")
-        await update.message.reply_video(video=file.file_id)  # Preview the video
     elif update.message.audio:
         file = update.message.audio
         file_path = os.path.join(user_temp_dir, f"{random_file_name}_audio.mp3")
-        await update.message.reply_audio(audio=file.file_id)  # Preview the audio
     else:
         await update.message.reply_text("Unsupported file type.")
         return
 
-    # Check file size before attempting to download
     if file.file_size > MAX_FILE_SIZE:
         await update.message.reply_text("The file is too large! Please send a file smaller than 50MB.")
         return
 
-    # Check if a download is already in progress
-    if downloading:
-        await update.message.reply_text("A download is already in progress. Please stop it with /clearall.")
-        return
-
-    # Set the downloading flag to True and start the download process
-    downloading = True
-    await download_file(file, file_path, update, user_temp_dir)
-
-# Function to handle the file download
-async def download_file(file, file_path, update, user_temp_dir):
-    global downloading
-
+    user_state["downloading"] = True
     try:
-        # Notify user that the download is starting
         progress_msg = await update.message.reply_text("Downloading... 0%")
-
-        # Download the file asynchronously
-        await handle_download(file, file_path, update, progress_msg, user_temp_dir)
+        await download_file(file, file_path, update, progress_msg, user_state)
     except Exception as e:
         await update.message.reply_text(f"Error while downloading the file: {e}")
     finally:
-        downloading = False
+        user_state["downloading"] = False
 
-# Async function for downloading
-async def handle_download(file, file_path, update, progress_msg, user_temp_dir):
+async def download_file(file, file_path, update, progress_msg, user_state):
     total_size = file.file_size
     downloaded = 0
-    global stop_requested, downloading
-
 
     with open(file_path, "wb") as f:
         file_data = await file.get_file()
         async with aiohttp.ClientSession() as session:
             async with session.get(file_data.file_path) as response:
-                while downloaded < total_size and downloading:
+                while downloaded < total_size and not user_state["stop_requested"]:
                     chunk = await response.content.read(CHUNK_SIZE)
                     if not chunk:
                         break
                     f.write(chunk)
                     downloaded += len(chunk)
 
-                    # Calculate download progress
                     progress = (downloaded / total_size) * 100
                     progress_bar = generate_progress_bar(progress)
+                    await progress_msg.edit_text(f"Downloading... {progress_bar}")
 
-                    # Update progress message
-                    try:
-                        await progress_msg.edit_text(f"Downloading... {progress_bar} /stop Downloding")
-                    except Exception as e:
-                        await progress_msg.edit_text(f"Error while updating progress: {e}")
-                        progress_msg = None  # Set progress_msg to None to avoid further attempts
-
-    await update.message.reply_text(f"File `{os.path.basename(file_path)}` has been downloaded! Send me more files or /zip to zip all files.")
+    if user_state["stop_requested"]:
+        os.remove(file_path)
+        await update.message.reply_text("Download stopped and file deleted.")
+    else:
+        await update.message.reply_text(f"File `{os.path.basename(file_path)}` has been downloaded! Send more files or use /zip to zip them.")
     await progress_msg.delete()
 
-# Command: /zip
+# Create a ZIP file
 async def zip_files(update: Update, context: CallbackContext):
     user_id = update.message.from_user.id
-    user_temp_dir = f"temp_files_{user_id}"
+    user_temp_dir = get_user_temp_dir(user_id)
 
-    if not os.path.exists(user_temp_dir) or len(os.listdir(user_temp_dir)) == 0:
+    if not os.path.exists(user_temp_dir) or not os.listdir(user_temp_dir):
         await update.message.reply_text("No files to compress! Please send some files first.")
         return
-
-    # Notify user that the ZIP file is being created
-    zip_msg = await update.message.reply_text("Creating ZIP file... This might take some time.")
 
     zip_file_path = os.path.join(user_temp_dir, f"files_{user_id}.zip")
     files_in_temp = os.listdir(user_temp_dir)
     total_files = len(files_in_temp)
 
+    zip_msg = await update.message.reply_text("Creating ZIP file... This might take some time.")
     try:
-        # Asynchronously create ZIP file
-        await create_zip_file_with_progress(zip_file_path, files_in_temp, total_files, zip_msg, user_temp_dir)
+        with zipfile.ZipFile(zip_file_path, "w") as zipf:
+            for idx, file_name in enumerate(files_in_temp):
+                file_path = os.path.join(user_temp_dir, file_name)
+                zipf.write(file_path, arcname=file_name)
 
-        # Send the ZIP file
+                progress = (idx + 1) / total_files * 100
+                progress_bar = generate_progress_bar(progress)
+                await zip_msg.edit_text(f"Creating ZIP file... {progress_bar}")
+
         await update.message.reply_document(document=open(zip_file_path, "rb"))
         await update.message.reply_text("Files have been successfully compressed and sent.")
     except Exception as e:
         await update.message.reply_text(f"Error while creating ZIP file: {e}")
     finally:
-        # Clean up the ZIP file after sending
-        if os.path.exists(zip_file_path):
-            os.remove(zip_file_path)
-
-        # Delete the ZIP creation message
+        os.remove(zip_file_path)
         await zip_msg.delete()
 
-# Function to create ZIP file with progress updates
-async def create_zip_file_with_progress(zip_file_path, files_in_temp, total_files, zip_msg, user_temp_dir):
-    try:
-        print(f"Starting to create ZIP file: {zip_file_path}")
-        
-        # Ensure that the ZIP directory exists
-        zip_dir = os.path.dirname(zip_file_path)
-        if not os.path.exists(zip_dir):
-            os.makedirs(zip_dir)
-        
-        with zipfile.ZipFile(zip_file_path, "w") as zipf:
-            for idx, file_name in enumerate(files_in_temp):
-                file_path = os.path.join(user_temp_dir, file_name)
-                print(f"Adding {file_name} to the ZIP file...")
-
-                # Add file to the ZIP
-                zipf.write(file_path, arcname=file_name)
-
-                # Calculate progress based on the number of files processed
-                progress = (idx + 1) / total_files * 100
-                progress_bar = generate_progress_bar(progress)
-
-                # Update the progress message (within the Telegram bot)
-                try:
-                    await zip_msg.edit_text(f"Creating ZIP file... {progress_bar}")
-                except Exception as e:
-                    print(f"Error while updating progress: {e}")
-
-        print("ZIP file created successfully.")
-    except Exception as e:
-        print(f"Error during ZIP creation: {e}")
-        raise Exception(f"Error while creating ZIP file: {e}")
-
-# Command: /joke
-async def joke(update: Update, context: CallbackContext):
-    jokes = ["Why don't skeletons fight each other? They don't have the guts.", 
-             "I told my wife she was drawing her eyebrows too high. She looked surprised."]
-    await update.message.reply_text(random.choice(jokes))
+# Cool progress bar
+def generate_progress_bar(percentage):
+    completed = int(percentage // 5)
+    remaining = 20 - completed
+    progress_bar = "🟩" * completed + "⬛" * remaining
+    return f"{progress_bar} {percentage:.2f}%"
 
 # Command: /help
 async def help(update: Update, context: CallbackContext):
@@ -292,20 +192,17 @@ async def help(update: Update, context: CallbackContext):
         "/start - Start the bot\n"
         "/zip - Create a ZIP file from your uploaded files\n"
         "/clearall - Clear all uploaded files\n"
-        "/joke - Get a random joke\n"
         "/help - Display this help message"
     )
 
 # Main function
 def main():
-    app = Application.builder().token(TOKEN).read_timeout(1200000000000000000).write_timeout(1200000000000000000).build()
+    app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("clearall", clear__all))
+    app.add_handler(CommandHandler("clearall", clear_all))
     app.add_handler(CommandHandler("zip", zip_files))
-    app.add_handler(CommandHandler("joke", joke))
     app.add_handler(CommandHandler("help", help))
-    app.add_handler(CommandHandler("stop", stop__download))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
     app.add_handler(MessageHandler(filters.PHOTO, handle_file))
     app.add_handler(MessageHandler(filters.VIDEO, handle_file))
@@ -314,7 +211,6 @@ def main():
 
     print("Bot is running. Press Ctrl+C to stop.")
     app.run_polling()
-
 
 # Entry point
 if __name__ == "__main__":
