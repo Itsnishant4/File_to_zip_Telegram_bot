@@ -296,56 +296,6 @@ async def help(update: Update, context: CallbackContext):
         "/help - Display this help message"
     )
 
-# Command: /url
-async def download_from_url(update: Update, context: CallbackContext):
-    global downloading, stop_requested
-
-    if not context.args:
-        await update.message.reply_text("Please provide a URL to download, e.g., /url <URL>.")
-        return
-    
-    url = context.args[0]
-    user_id = update.message.from_user.id
-    user_dir = f"temp_files_{user_id}"
-
-    if not os.path.exists(user_dir):
-        os.makedirs(user_dir)
-
-    # Extract filename from URL
-    file_name = url.split("/")[-1] or "downloaded_file"
-    file_path = os.path.join(user_dir, file_name)
-
-    msg = await update.message.reply_text("Starting download...")
-
-    try:
-        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:
-            async with session.get(url) as response:
-                if response.status != 200:
-                    raise Exception(f"Failed to download file: HTTP {response.status}")
-                total_size = int(response.headers.get("Content-Length", 0))
-                downloaded_size = 0
-                downloading = True
-                with open(file_path, "wb") as f:
-                    while downloading :
-                        chunk = await response.content.read(5 * 1024 * 1024)  # 1 MB chunks
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                        downloaded_size += len(chunk)
-                        
-                        # Calculate download progress
-                        progress = (downloaded_size / total_size) * 100
-                        progress_bar = generate_progress_bar(progress)
-
-                        try:
-                            await msg.edit_text(f"Downloading... {progress_bar} /stop Downloding")
-                        except Exception as e:
-                            await msg.edit_text(f"Error while updating progress: {e}")
-        await msg.edit_text(f"File `{file_name}` has been downloaded! Use /zip to compress all files Or Send Me More Files.")
-    except Exception as e:
-        await msg.edit_text(f"Error while downloading the file from URL: {e}")
-        downloading = False
-
 # Main function
 def main():
     app = Application.builder().token(TOKEN).read_timeout(1200000000000000000).write_timeout(1200000000000000000).build()
@@ -355,7 +305,6 @@ def main():
     app.add_handler(CommandHandler("zip", zip_files))
     app.add_handler(CommandHandler("joke", joke))
     app.add_handler(CommandHandler("help", help))
-    app.add_handler(CommandHandler("url", download_from_url))
     app.add_handler(CommandHandler("stop", stop__download))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
     app.add_handler(MessageHandler(filters.PHOTO, handle_file))
