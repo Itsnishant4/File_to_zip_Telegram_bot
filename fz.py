@@ -58,12 +58,21 @@ async def clear_all(update: Update, context: CallbackContext):
         os.rmdir(user_temp_dir)  # Remove the directory
         user_states[user_id]["temp_dir"] = None
         await query.edit_message_text("All files have been cleared.")
-        await update.message.reply_text("All files have been cleared.")
+        
     else:
         await query.edit_message_text("No files found to delete!")
+
+async def clear__all(update: Update, context: CallbackContext):
+    user_temp_dir = get_user_temp_dir(user_id)
+    if os.path.exists(user_temp_dir):
+        for file_name in os.listdir(user_temp_dir):
+            file_path = os.path.join(user_temp_dir, file_name)
+            os.remove(file_path)
+        os.rmdir(user_temp_dir)  # Remove the directory
+        user_states[user_id]["temp_dir"] = None
+        await update.message.reply_text("All files have been cleared.")
+    else:
         await update.message.reply_text("No files found to delete!")
-
-
 # CallbackQuery handler
 async def handle_buttons(update: Update, context: CallbackContext):
     query = update.callback_query
@@ -203,7 +212,7 @@ def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("clearall", clear_all))
+    app.add_handler(CommandHandler("clearall", clear__all))
     app.add_handler(CommandHandler("zip", zip_files))
     app.add_handler(CommandHandler("help", help))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_file))
