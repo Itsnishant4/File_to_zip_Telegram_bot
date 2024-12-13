@@ -230,7 +230,7 @@ async def download_from_url(update: Update, context: CallbackContext):
     
     url = context.args[0]
     user_id = update.message.from_user.id
-    user_dir = f"temp_files_{user_id}"
+    user_dir = get_user_temp_dir(user_id)
     if not os.path.exists(user_dir):
         os.makedirs(user_dir)
 
