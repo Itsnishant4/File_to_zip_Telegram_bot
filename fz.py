@@ -1,7 +1,3 @@
-
-
-# Bot token
-
 import os
 import zipfile
 import ssl
@@ -16,6 +12,7 @@ from aiohttp import web
 from collections import defaultdict
 import tempfile
 from telegram.error import RetryAfter
+from urllib.parse import urlparse
 
 
 
@@ -230,25 +227,12 @@ async def download_from_url(update: Update, context: CallbackContext):
     if not context.args:
         await update.message.reply_text("Please provide a URL to download, e.g., /url <URL>.")
         return
-    downloaded = 0
+    
     url = context.args[0]
     user_id = update.message.from_user.id
     user_dir = f"temp_files_{user_id}"
-    last_progress = 0
     if not os.path.exists(user_dir):
         os.makedirs(user_dir)
-
-    # Extract filename and file type from URL
-    user_temp_dir = get_user_temp_dir(user_id)
-    file = None
-    random_file_name = f"{random.randint(1, 1000000)}"
-    file_name = os.path.basename(url)  # Extracts file name from URL path
-    file_name_without_ext, file_extension = os.path.splitext(file_name)  # Split into name and extension
-    file_path = os.path.join(user_temp_dir, f"{random_file_name}_{file_name},{file_extension}")
-    
-    # You can access the file extension here
-    print(f"File Name: {file_name_without_ext}")
-    print(f"File Type (Extension): {file_extension}")
 
     msg = await update.message.reply_text("Starting download...")
 
@@ -257,8 +241,26 @@ async def download_from_url(update: Update, context: CallbackContext):
             async with session.get(url) as response:
                 if response.status != 200:
                     raise Exception(f"Failed to download file: HTTP {response.status}")
+
+                # Extract filename from headers or fallback to URL
+                content_disposition = response.headers.get("Content-Disposition")
+                if content_disposition and "filename=" in content_disposition:
+                    file_name = content_disposition.split("filename=")[-1].strip('"')
+                else:
+                    file_name = os.path.basename(urlparse(url).path)
+                
+                # Generate the file path
+                random_prefix = f"{random.randint(1, 1000000)}"
+                file_path = os.path.join(user_dir, f"{random_prefix}_{file_name}")
+                
+                # Log the final file path
+                print(f"File will be saved as: {file_path}")
+
+                # Start downloading the file
                 total_size = int(response.headers.get("Content-Length", 0))
-                downloaded_size = 0
+                downloaded = 0
+                last_progress = 0
+
                 with open(file_path, "wb") as f:
                     while True:
                         chunk = await response.content.read(5 * 1024 * 1024)  # 5 MB chunks
@@ -267,7 +269,7 @@ async def download_from_url(update: Update, context: CallbackContext):
                         f.write(chunk)
                         downloaded += len(chunk)
                         # Calculate download progress
-                        progress = (downloaded / total_size) * 100
+                        progress = (downloaded / total_size) * 100 if total_size else 0
                         if int(progress) - int(last_progress) >= 1:
                             last_progress = progress
                             progress_bar = generate_progress_bar(progress)
@@ -278,9 +280,10 @@ async def download_from_url(update: Update, context: CallbackContext):
                             except Exception as e:
                                 print(f"Error updating progress: {e}")
 
-        await msg.edit_text(f"File has been downloaded! Use /zip to compress all files Or Send Me More Files.")
+        await msg.edit_text(f"File has been downloaded! Use /zip to compress all files or send me more files.")
     except Exception as e:
-        await msg.edit_text(f"Error while downloading the file from URL: {e}")# Main function
+        await msg.edit_text(f"Error while downloading the file from URL: {e}")
+# Main function
 def main():
     app = Application.builder().token(TOKEN).build()
 
