@@ -238,14 +238,17 @@ async def download_from_url(update: Update, context: CallbackContext):
     if not os.path.exists(user_dir):
         os.makedirs(user_dir)
 
-    # Extract filename from URL
+    # Extract filename and file type from URL
     user_temp_dir = get_user_temp_dir(user_id)
     file = None
     random_file_name = f"{random.randint(1, 1000000)}"
-    file_name = os.path.basename(url)
-    file_path = os.path.join(user_temp_dir, f"{random_file_name}_{file_name}")
+    file_name = os.path.basename(url)  # Extracts file name from URL path
+    file_name_without_ext, file_extension = os.path.splitext(file_name)  # Split into name and extension
+    file_path = os.path.join(user_temp_dir, f"{random_file_name}_{file_name},{file_extension}")
     
-
+    # You can access the file extension here
+    print(f"File Name: {file_name_without_ext}")
+    print(f"File Type (Extension): {file_extension}")
 
     msg = await update.message.reply_text("Starting download...")
 
@@ -258,14 +261,14 @@ async def download_from_url(update: Update, context: CallbackContext):
                 downloaded_size = 0
                 with open(file_path, "wb") as f:
                     while True:
-                        chunk = await response.content.read(5 *1024 * 1024)  # 1 MB chunks
+                        chunk = await response.content.read(5 * 1024 * 1024)  # 5 MB chunks
                         if not chunk:
                             break
                         f.write(chunk)
                         downloaded += len(chunk)
                         # Calculate download progress
                         progress = (downloaded / total_size) * 100
-                        if int(progress) - int(last_progress) >= 1:                            
+                        if int(progress) - int(last_progress) >= 1:
                             last_progress = progress
                             progress_bar = generate_progress_bar(progress)
                             try:
@@ -277,8 +280,7 @@ async def download_from_url(update: Update, context: CallbackContext):
 
         await msg.edit_text(f"File has been downloaded! Use /zip to compress all files Or Send Me More Files.")
     except Exception as e:
-        await msg.edit_text(f"Error while downloading the file from URL: {e}")
-# Main function
+        await msg.edit_text(f"Error while downloading the file from URL: {e}")# Main function
 def main():
     app = Application.builder().token(TOKEN).build()
 
