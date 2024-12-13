@@ -134,44 +134,75 @@ async def handle_file(update: Update, context: CallbackContext):
     finally:
         user_state["downloading"] = False
 
-async def download_file(file, file_path, update, progress_msg, user_state):
-    total_size = file.file_size
-    downloaded = 0
-    last_progress = 0
-    chunk_size = 1024 * 1024  # 1 MB chunks (adjustable)
+async def download_from_url(update: Update, context: CallbackContext):
+    if not context.args:
+        await update.message.reply_text("Please provide a URL to download, e.g., /url <URL>.")
+        return
 
-    with open(file_path, "wb") as f:
-        file_data = await file.get_file()
-        async with aiohttp.ClientSession() as session:
-            async with session.get(file_data.file_path) as response:
-                while downloaded < total_size:
-                    if user_state.get("stop_requested", False):
-                        os.remove(file_path)
-                        await update.message.reply_text("Download stopped and file deleted.")
-                        return  # Exit the function
+    url = context.args[0]
+    user_id = update.message.from_user.id
+    user_dir = get_user_temp_dir(user_id)
+    os.makedirs(user_dir, exist_ok=True)
 
-                    chunk = await response.content.read(chunk_size)
-                    if not chunk:
-                        break  # No more data
+    msg = await update.message.reply_text("Starting download...")
 
-                    f.write(chunk)
-                    downloaded += len(chunk)
+    try:
+        print(f"Received URL: {url}")
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:
+            async with session.get(url) as response:
+                print(f"HTTP Status: {response.status}")
 
-                    # Update progress bar every 5% change
-                    progress = (downloaded / total_size) * 100
-                    if int(progress) - int(last_progress) >= 30:
-                        last_progress = progress
-                        progress_bar = generate_progress_bar(progress)
-                        try:
-                            await progress_msg.edit_text(f"Downloading... {progress_bar}")
-                        except RetryAfter as e:
-                            await asyncio.sleep(e.retry_after)
-                        except Exception as e:
-                            print(f"Error updating progress: {e}")
+                if response.status != 200:
+                    await msg.edit_text(f"Failed to download: HTTP {response.status}")
+                    return
 
-    # Completion message
-    await update.message.reply_text(f"File `{os.path.basename(file_path)}` has been downloaded!")
-    await progress_msg.delete()
+                # Check content length
+                total_size = response.headers.get("Content-Length")
+                if total_size:
+                    total_size = int(total_size)
+                    print(f"Content-Length: {total_size} bytes")
+                    if total_size > MAX_FILE_SIZE_:
+                        await msg.edit_text(f"File too large! Max allowed size is {MAX_FILE_SIZE_ // (1024 * 1024)} MB.")
+                        return
+                else:
+                    print("Content-Length header is missing.")
+                    total_size = None
+
+                # Determine file name
+                content_disposition = response.headers.get("Content-Disposition")
+                if content_disposition and "filename=" in content_disposition:
+                    file_name = content_disposition.split("filename=")[-1].strip('"')
+                else:
+                    file_name = os.path.basename(urlparse(url).path) or "downloaded_file"
+
+                file_path = os.path.join(user_dir, f"{random.randint(1, 1000000)}_{file_name}")
+                print(f"File will be saved as: {file_path}")
+
+                # Start downloading
+                downloaded = 0
+                with open(file_path, "wb") as f:
+                    async for chunk in response.content.iter_chunked(CHUNK_SIZE):
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+
+                        # Update progress
+                        if total_size:
+                            progress = (downloaded / total_size) * 100
+                            progress_bar = generate_progress_bar(progress)
+                            await msg.edit_text(f"Downloading... {progress_bar}")
+                        else:
+                            await msg.edit_text(f"Downloading... {downloaded} bytes")
+
+        await msg.edit_text("Download complete! Use /zip to compress the file.")
+        print(f"Download successful: {file_path}")
+    except aiohttp.ClientError as e:
+        await msg.edit_text(f"Network error: {e}")
+        print(f"ClientError: {e}")
+    except Exception as e:
+        await msg.edit_text(f"Error: {e}")
+        print(f"Exception: {e}")
 
 # Create a ZIP file
 async def zip_files(update: Update, context: CallbackContext):
@@ -233,61 +264,51 @@ async def download_from_url(update: Update, context: CallbackContext):
     url = context.args[0]
     user_id = update.message.from_user.id
     user_dir = get_user_temp_dir(user_id)
-    if not os.path.exists(user_dir):
-        os.makedirs(user_dir)
+    os.makedirs(user_dir, exist_ok=True)
 
     msg = await update.message.reply_text("Starting download...")
 
     try:
         async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=ssl_context)) as session:
             async with session.get(url) as response:
+                print(f"Response status: {response.status}")
                 if response.status != 200:
-                    raise Exception(f"Failed to download file: HTTP {response.status}")
-
-                # Check the content length (file size)
-                total_size = int(response.headers.get("Content-Length", 0))
-                if total_size > MAX_FILE_SIZE_:
-                    await msg.edit_text(f"File is too large to download. Maximum allowed size is 500MB.")
+                    await msg.edit_text(f"Failed to download: HTTP {response.status}")
                     return
 
-                # Extract filename from headers or fallback to URL
-                content_disposition = response.headers.get("Content-Disposition")
-                if content_disposition and "filename=" in content_disposition:
-                    file_name = content_disposition.split("filename=")[-1].strip('"')
-                else:
-                    file_name = os.path.basename(urlparse(url).path)
+                total_size = int(response.headers.get("Content-Length", 0))
+                print(f"Content-Length: {total_size}")
 
-                # Generate the file path
-                random_prefix = f"{random.randint(1, 1000000)}"
-                file_path = os.path.join(user_dir, f"{random_prefix}_{file_name}")
-                # Log the final file path
-                print(f"File will be saved as: {file_path}")
+                if total_size > MAX_FILE_SIZE_:
+                    await msg.edit_text(f"File too large. Max size: {MAX_FILE_SIZE_ // (1024 * 1024)} MB.")
+                    return
+
+                content_disposition = response.headers.get("Content-Disposition")
+                file_name = (
+                    content_disposition.split("filename=")[-1].strip('"')
+                    if content_disposition and "filename=" in content_disposition
+                    else os.path.basename(urlparse(url).path)
+                )
+
+                file_path = os.path.join(user_dir, f"{random.randint(1, 1000000)}_{file_name}")
+                print(f"Saving file to: {file_path}")
 
                 downloaded = 0
-                last_progress = 0
-
                 with open(file_path, "wb") as f:
-                    while True:
-                        chunk = await response.content.read(5 * 1024 * 1024)  # 5 MB chunks
+                    async for chunk in response.content.iter_chunked(CHUNK_SIZE):
                         if not chunk:
                             break
                         f.write(chunk)
                         downloaded += len(chunk)
-                        # Calculate download progress
                         progress = (downloaded / total_size) * 100 if total_size else 0
-                        if int(progress) - int(last_progress) >= 1:
-                            last_progress = progress
-                            progress_bar = generate_progress_bar(progress)
-                            try:
-                                await msg.edit_text(f"Downloading... {progress_bar}")
-                            except RetryAfter as e:
-                                await asyncio.sleep(e.retry_after)
-                            except Exception as e:
-                                print(f"Error updating progress: {e}")
+                        progress_bar = generate_progress_bar(progress)
+                        await msg.edit_text(f"Downloading... {progress_bar}")
 
-        await msg.edit_text(f"File has been downloaded! Use /zip to compress all files or send me more files.")
+        await msg.edit_text("Download complete! Use /zip to compress the file.")
     except Exception as e:
-        await msg.edit_text(f"Error while downloading the file from URL: {e}")
+        await msg.edit_text(f"Error: {e}")
+        print(f"Exception: {e}")
+
 # Main function
 def main():
     app = Application.builder().token(TOKEN).build()
