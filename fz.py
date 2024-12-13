@@ -223,6 +223,8 @@ async def help(update: Update, context: CallbackContext):
     )
 
 
+MAX_FILE_SIZE_ = 500 * 1024 * 1024  # 500 MB
+
 async def download_from_url(update: Update, context: CallbackContext):
     if not context.args:
         await update.message.reply_text("Please provide a URL to download, e.g., /url <URL>.")
@@ -242,27 +244,30 @@ async def download_from_url(update: Update, context: CallbackContext):
                 if response.status != 200:
                     raise Exception(f"Failed to download file: HTTP {response.status}")
 
+                # Check the content length (file size)
+                total_size = int(response.headers.get("Content-Length", 0))
+                if total_size > MAX_FILE_SIZE_:
+                    await msg.edit_text(f"File is too large to download. Maximum allowed size is 500MB.")
+                    return
+
                 # Extract filename from headers or fallback to URL
                 content_disposition = response.headers.get("Content-Disposition")
                 if content_disposition and "filename=" in content_disposition:
                     file_name = content_disposition.split("filename=")[-1].strip('"')
                 else:
                     file_name = os.path.basename(urlparse(url).path)
-                
+
                 # Generate the file path
                 random_prefix = f"{random.randint(1, 1000000)}"
                 file_path = os.path.join(user_dir, f"{random_prefix}_{file_name}")
-                
                 # Log the final file path
                 print(f"File will be saved as: {file_path}")
 
-                # Start downloading the file
-                total_size = int(response.headers.get("Content-Length", 0))
                 downloaded = 0
                 last_progress = 0
 
                 with open(file_path, "wb") as f:
-                    while True and total_size < 500 :
+                    while True:
                         chunk = await response.content.read(5 * 1024 * 1024)  # 5 MB chunks
                         if not chunk:
                             break
