@@ -239,7 +239,7 @@ async def download_from_url(update: Update, context: CallbackContext):
         os.makedirs(user_dir)
 
     # Extract filename from URL
-    file_name = url.split("/")[-1] or "downloaded_file"
+    file_name = "downloaded_file"
     user_temp_dir = get_user_temp_dir(user_id)
     file = None
     random_file_name = f"{random.randint(1, 1000000)}"
