@@ -240,7 +240,10 @@ async def download_from_url(update: Update, context: CallbackContext):
 
     # Extract filename from URL
     file_name = url.split("/")[-1] or "downloaded_file"
-    file_path = os.path.join(user_dir, file_name)
+    user_temp_dir = get_user_temp_dir(user_id)
+    file = None
+    random_file_name = f"{random.randint(1, 1000000)}"
+    file_path = os.path.join(user_temp_dir, f"{random_file_name}_{file_name}")
 
     msg = await update.message.reply_text("Starting download...")
 
@@ -253,7 +256,7 @@ async def download_from_url(update: Update, context: CallbackContext):
                 downloaded_size = 0
                 with open(file_path, "wb") as f:
                     while True:
-                        chunk = await response.content.read(1024 * 1024)  # 1 MB chunks
+                        chunk = await response.content.read(5 *1024 * 1024)  # 1 MB chunks
                         if not chunk:
                             break
                         f.write(chunk)
