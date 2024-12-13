@@ -234,7 +234,7 @@ async def download_from_url(update: Update, context: CallbackContext):
     url = context.args[0]
     user_id = update.message.from_user.id
     user_dir = f"temp_files_{user_id}"
-    last_progress = 1
+    last_progress = 0
     if not os.path.exists(user_dir):
         os.makedirs(user_dir)
 
