@@ -262,7 +262,7 @@ async def download_from_url(update: Update, context: CallbackContext):
                 last_progress = 0
 
                 with open(file_path, "wb") as f:
-                    while True:
+                    while True and total_size < 500 :
                         chunk = await response.content.read(5 * 1024 * 1024)  # 5 MB chunks
                         if not chunk:
                             break
