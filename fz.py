@@ -242,7 +242,8 @@ async def download_from_url(update: Update, context: CallbackContext):
     user_temp_dir = get_user_temp_dir(user_id)
     file = None
     random_file_name = f"{random.randint(1, 1000000)}"
-    file_path = os.path.join(user_temp_dir)
+    file_name = os.path.basename(url)
+    file_path = os.path.join(user_temp_dir, f"{random_file_name}_{file_name}")
     
 
 
