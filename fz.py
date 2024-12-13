@@ -239,11 +239,12 @@ async def download_from_url(update: Update, context: CallbackContext):
         os.makedirs(user_dir)
 
     # Extract filename from URL
-    file_name = "downloaded_file"
     user_temp_dir = get_user_temp_dir(user_id)
     file = None
     random_file_name = f"{random.randint(1, 1000000)}"
-    file_path = os.path.join(user_temp_dir, f"{random_file_name}_{file_name}")
+    file_path = os.path.join(user_temp_dir)
+    
+
 
     msg = await update.message.reply_text("Starting download...")
 
@@ -273,7 +274,7 @@ async def download_from_url(update: Update, context: CallbackContext):
                             except Exception as e:
                                 print(f"Error updating progress: {e}")
 
-        await msg.edit_text(f"File `{file_name}` has been downloaded! Use /zip to compress all files Or Send Me More Files.")
+        await msg.edit_text(f"File has been downloaded! Use /zip to compress all files Or Send Me More Files.")
     except Exception as e:
         await msg.edit_text(f"Error while downloading the file from URL: {e}")
 # Main function
