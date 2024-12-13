@@ -257,15 +257,14 @@ async def download_from_url(update: Update, context: CallbackContext):
                         if not chunk:
                             break
                         f.write(chunk)
-                        downloaded_size += len(chunk)
+                        downloaded += len(chunk)
                         # Calculate download progress
                         progress = (downloaded / total_size) * 100
                         if int(progress) - int(last_progress) >= 1:                            
                             last_progress = progress
                             progress_bar = generate_progress_bar(progress)
                             try:
-                                progress_msg = await update.message.reply_text("Downloading... 0%")
-                                await progress_msg.edit_text(f"Downloading... {progress_bar}")
+                                await msg.edit_text(f"Downloading... {progress_bar}")
                             except RetryAfter as e:
                                 await asyncio.sleep(e.retry_after)
                             except Exception as e:
