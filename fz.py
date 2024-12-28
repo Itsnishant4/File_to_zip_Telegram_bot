@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 
 
-TOKEN = "7919904291:AAGku102DsYoZ1dpZ9Szy3vBfYg4_OzRhO4"
+TOKEN = "your telegram bot token"
 # SSL context for secure requests
 ssl_context = ssl.create_default_context(cafile=certifi.where())
 
